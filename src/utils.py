@@ -2,7 +2,7 @@ import torch
 import torch.fx
 from torch.fx.immutable_collections import immutable_list
 import torch.nn as nn
-from utils import LayerGraph, LayerNode
+from .graph import LayerGraph, LayerNode
 
 INCLUSION_LIST = [
     nn.Linear,
