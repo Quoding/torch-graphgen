@@ -11,6 +11,7 @@ class LayerNode:
     # TorchFX graph is incoherent - sometimes str, sometimes object ref.
     target: object  # Upstream / towards the input
     idx: Optional[int] = None
+    boundaries: Optional[list[int]] = field(default_factory=list)  # inclusive bounds
     parents: Optional[list[str]] = field(default_factory=list)
     # Downstream / towards the output
     children: Optional[list[str]] = field(default_factory=list)

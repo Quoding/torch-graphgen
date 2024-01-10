@@ -54,14 +54,23 @@ def model_to_layer_graph(model: nn.Module) -> LayerGraph:
                 model, cur_node, "children", layer_graph, next_clean_nodes_names
             )
 
-    # Clean up the graph by removing layers not in INCLUSION_LIST
+    # Clean up the graph by removing layers not in INCLUSION_LIST (which are not connected anymore)
+    # Add some additional data like vertices boundaries and layer index
     idx = 0
+    cur_lb = 0
+    cur_ub = 0
+    n_components = 0
     for name in list(layer_graph.keys()):
         node = layer_graph[name]
         if not is_included(node.get_object(model)):
             del layer_graph[name]
         else:
+            cur_lb += n_components
             node.idx = idx
+            module = node.get_object(model)
+            n_components = get_number_components(module)
+            cur_ub += n_components
+            node.boundaries = [cur_lb, cur_ub - 1]
             idx += 1
 
     return LayerGraph(model, layer_graph)
@@ -77,49 +86,49 @@ def get_number_components(module):
     )
 
 
-def change_dim(tns: torch.Tensor, target_dim: int) -> torch.Tensor:
-    """
-    Expand or shrink dimension of tns so that it matches target dim.
+# def change_dim(tns: torch.Tensor, target_dim: int) -> torch.Tensor:
+#     """
+#     Expand or shrink dimension of tns so that it matches target dim.
+#
+#     To achieve this: squeeze or unsqueeze first dimension
+#     """
+#     cur_dim = tns.dim()
+#     cur_dim_smaller = cur_dim < target_dim
+#     while cur_dim != target_dim:
+#         if cur_dim_smaller:
+#             tns = tns.unsqueeze(0)
+#         else:
+#             tns = tns.squeeze(0)
+#         print(tns)
+#         print(target_dim, cur_dim)
+#         input()
+#         cur_dim = tns.dim()
+#     return tns
+#
 
-    To achieve this: squeeze or unsqueeze first dimension
-    """
-    cur_dim = tns.dim()
-    cur_dim_smaller = cur_dim < target_dim
-    while cur_dim != target_dim:
-        if cur_dim_smaller:
-            tns = tns.unsqueeze(0)
-        else:
-            tns = tns.squeeze(0)
-        print(tns)
-        print(target_dim, cur_dim)
-        input()
-        cur_dim = tns.dim()
-    return tns
+# def layer_to_vertices(module: nn.Module, node_feature_dim: int = 1) -> torch.Tensor:
+#     n_components = get_number_components(module)
+#     parameters = list(module.parameters())  # Parameters as list
+#     n_items = len(parameters)  # e.g. Linear + bias
+#     nodes = [None] * n_components
+#     for component in range(n_components):
+#         cur_node = [None] * n_items
+#         for item in range(n_items):
+#             params = parameters[item].data[component]
+#             # params = change_dim(
+#             #     params, node_feature_dim
+#             # )  # TODO remove or change, this doesn't always work...
+#             cur_node[item] = params
+#         nodes[component] = torch.cat(cur_node)
+#     return torch.cat(nodes, dim=0)
 
 
-def layer_to_vertices(module: nn.Module, node_feature_dim: int = 1) -> torch.Tensor:
-    n_components = get_number_components(module)
-    parameters = list(module.parameters())  # Parameters as list
-    n_items = len(parameters)  # e.g. Linear + bias
-    nodes = [None] * n_components
-    for component in range(n_components):
-        cur_node = [None] * n_items
-        for item in range(n_items):
-            params = parameters[item].data[component]
-            params = change_dim(
-                params, node_feature_dim
-            )  # TODO remove or change, this doesn't always work...
-            cur_node[item] = params
-        nodes[component] = torch.cat(cur_node)
-    return torch.cat(nodes, dim=0)
-
-
-def model_to_neuron_graph(model: nn.Module) -> tg.data.Data:
+def model_to_ajd_list(model: nn.Module) -> tg.data.Data:
     layer_graph = model_to_layer_graph(model)
     print(layer_graph.idx_graph)
-    for idx in range(len(layer_graph)):
-        node_obj = layer_graph.get_node_object(idx)
-        x = layer_to_vertices(node_obj)
-        print(x)
-        # for child_names in layer_node.children:
-        #     # TODO Create vertices
+    # for idx in range(len(layer_graph)):
+    # node_obj = layer_graph.get_node_object(idx)
+    # x = layer_to_vertices(node_obj)
+    # print(x)
+    # for child_names in layer_node.children:
+    #     # TODO Create vertices
