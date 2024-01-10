@@ -36,14 +36,16 @@ class LayerGraph:
         for node in self.graph.values():
             self.idx_graph[node.idx] = node
 
-    def get_node(self, node_identifier: Union[int, str]):
+    def get_node(self, node_identifier: Union[int, str]) -> LayerNode:
         if isinstance(node_identifier, str):
             node = self.graph[node_identifier]
         else:
             node = self.idx_graph[node_identifier]
         return node
 
-    def get_node_module(self, node_identifier: Union[int, str]):
+    def get_node_module(
+        self, node_identifier: Union[int, str]
+    ) -> Union[nn.Module, None]:
         node = self.get_node(node_identifier)
         return node.get_module(self.model)
 
@@ -118,10 +120,8 @@ class LayerGraph:
 
         self.graph = layer_graph
 
-        return self.graph
-
     def gen_component_adj_list(self):
-        if self.ajd_list:
+        if self.adj_list:
             print(
                 "Adjacency list was already generated. Call reset() to regenerate graph, then call this function again."
             )
@@ -134,8 +134,7 @@ class LayerGraph:
                     vertex_adj_list.extend(list(range(*child_node.boundaries)))
                 global_adj_list.append(vertex_adj_list)
 
-        self.ajd_list = global_adj_list
-        return self.adj_list
+        self.adj_list = global_adj_list
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.graph)
