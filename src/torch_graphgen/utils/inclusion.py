@@ -26,7 +26,6 @@ INCLUSION_LIST = [
     nn.TransformerEncoderLayer,
     nn.TransformerDecoderLayer,
 ]
-PROPERTY_NAMES = ["out_channels", "out_features"]
 
 
 def is_included(module: nn.Module):
@@ -46,7 +45,7 @@ def search_for_next_included_layer(
     node: LayerNode,
     attr: str,
     layer_graph: dict,
-    next_clean_nodes_names: list,
+    next_clean_nodes: list,
 ) -> list[str]:
     """
     Recursively search the next layer with a type in INCLUSION_LIST
@@ -58,13 +57,13 @@ def search_for_next_included_layer(
     :param next_clean_nodes_names: list of new nodes names that will be the parents or children of `node`, passed by reference
     :return: new list of node names that are either `children` or `parent` of `node` that have layer types in INCLUSION_LIST
     """
-    next_nodes: list[LayerNode] = [layer_graph[name] for name in getattr(node, attr)]
+    next_nodes: list[LayerNode] = [attr_node for attr_node in getattr(node, attr)]
     for next_node in next_nodes:
-        obj = next_node.get_object(model)
+        obj = next_node.get_module(model)
         if not is_included(obj):
             search_for_next_included_layer(
-                model, next_node, attr, layer_graph, next_clean_nodes_names
+                model, next_node, attr, layer_graph, next_clean_nodes
             )
         else:
-            next_clean_nodes_names.append(next_node.name)
-    return next_clean_nodes_names
+            next_clean_nodes.append(next_node)
+    return next_clean_nodes

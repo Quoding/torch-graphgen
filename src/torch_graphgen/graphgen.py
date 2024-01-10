@@ -1,134 +1,141 @@
-from typing import Callable, Tuple
+from typing import Union
+from .utils.inclusion import search_for_next_included_layer, is_included
+from .utils.stats import get_n_components
+from .utils.graph import LayerNode
 
+import torch.nn as nn
 import torch
-from torch import nn
 from torch.fx.immutable_collections import immutable_list
 
-import torch_geometric as tg
 
-from .utils.graph import LayerGraph, LayerNode
-from .utils.inclusion import is_included, search_for_next_included_layer, PROPERTY_NAMES
+class LayerGraph:
+    def __init__(self, model: nn.Module):
+        self.model: nn.Module = model
+        self.graph: dict = {}
+        self.idx_graph: dict = {}
+        self.initial_nodes: list[LayerNode] = []
+        self.adj_list = []
 
+        model.eval()
 
-def model_to_layer_graph(model: nn.Module) -> LayerGraph:
-    model.eval()
+        self.gen_layer_graph()
+        self.find_initial_nodes()
+        self.gen_idx_graph()
 
-    computational_graph = torch.fx.symbolic_trace(model)
+    def find_initial_nodes(self):
+        self.initial_nodes = [
+            node for node in self.graph.values() if len(node.parents) == 0
+        ]
 
-    layer_graph = {}
+    def gen_idx_graph(self):
+        if self.idx_graph:
+            print(
+                "Graph was already generated previously. Call reset() to reset object and regenerate the graph."
+            )
+            return
+        for node in self.graph.values():
+            self.idx_graph[node.idx] = node
 
-    # Create base nodes, no edges are created
-    for idx, node in enumerate(computational_graph.graph.nodes):
-        layer_graph[node.name] = LayerNode(node.name, node.target)
-
-    # Create edges by iterating through the nodes
-    for node in reversed(computational_graph.graph.nodes):
-        cur_node = layer_graph[node.name]
-        if len(node.args) == 0:
-            continue
-        elif type(node.args[0]) == immutable_list or type(node.args[0]) == tuple:
-            for parent in node.args[0]:
-                parent_node = layer_graph[parent.name]
-                parent_node.children.append(cur_node.name)
-                cur_node.parents.append(parent_node.name)
+    def get_node(self, node_identifier: Union[int, str]):
+        if isinstance(node_identifier, str):
+            node = self.graph[node_identifier]
         else:
-            parent_name = node.args[0].name
-            parent_node = layer_graph[parent_name]
-            parent_node.children.append(cur_node.name)
-            cur_node.parents.append(parent_node.name)
+            node = self.idx_graph[node_identifier]
+        return node
 
-    # Connect is_included layers together, clean up unimportant layers
-    for node in reversed(computational_graph.graph.nodes):
-        if node.op != "placeholder" and node.op != "output":
+    def get_node_module(self, node_identifier: Union[int, str]):
+        node = self.get_node(node_identifier)
+        return node.get_module(self.model)
+
+    def reset(self):
+        self.__init__(self.model)
+
+    def gen_layer_graph(self):
+        if self.graph:
+            print(self.graph)
+            print(
+                "Graph was already generated previously. Call reset() to reset object and regenerate the graph."
+            )
+            return
+        computational_graph = torch.fx.symbolic_trace(self.model)
+
+        layer_graph = {}
+
+        # Create base nodes, no edges are created
+        for idx, node in enumerate(computational_graph.graph.nodes):
+            layer_graph[node.name] = LayerNode(node.name, node.target)
+
+        # Create edges by iterating through the nodes
+        for node in reversed(computational_graph.graph.nodes):
             cur_node = layer_graph[node.name]
+            if len(node.args) == 0:
+                continue
+            elif type(node.args[0]) == immutable_list or type(node.args[0]) == tuple:
+                for parent in node.args[0]:
+                    parent_node = layer_graph[parent.name]
+                    parent_node.children.append(cur_node)
+                    cur_node.parents.append(parent_node)
+            else:
+                parent_name = node.args[0].name
+                parent_node = layer_graph[parent_name]
+                parent_node.children.append(cur_node)
+                cur_node.parents.append(parent_node)
 
-            # Update parents to nearest included layer
-            next_clean_nodes_names = []
-            cur_node.parents = search_for_next_included_layer(
-                model, cur_node, "parents", layer_graph, next_clean_nodes_names
+        # Connect is_included layers together, clean up unimportant layers
+        for node in reversed(computational_graph.graph.nodes):
+            if node.op != "placeholder" and node.op != "output":
+                cur_node = layer_graph[node.name]
+
+                # Update parents to nearest included layer
+                next_clean_nodes = []
+                cur_node.parents = search_for_next_included_layer(
+                    self.model, cur_node, "parents", layer_graph, next_clean_nodes
+                )
+
+                # Update children to nearest included layer
+                next_clean_nodes = []
+                cur_node.children = search_for_next_included_layer(
+                    self.model, cur_node, "children", layer_graph, next_clean_nodes
+                )
+        # Clean up the graph by removing layers not in INCLUSION_LIST (which are not connected anymore)
+        # Add some additional data like vertices boundaries and layer index
+        idx = 0
+        cur_lb = 0
+        cur_ub = 0
+        n_components = 0
+        for name in list(layer_graph.keys()):
+            node = layer_graph[name]
+            if not is_included(node.get_module(self.model)):
+                del layer_graph[name]
+            else:
+                cur_lb += n_components
+                node.idx = idx
+                module = node.get_module(self.model)
+                n_components = get_n_components(module)
+                cur_ub += n_components
+                node.boundaries = [cur_lb, cur_ub]
+                idx += 1
+
+        self.graph = layer_graph
+
+        return self.graph
+
+    def gen_component_adj_list(self):
+        if self.ajd_list:
+            print(
+                "Adjacency list was already generated. Call reset() to regenerate graph, then call this function again."
             )
+            return
+        global_adj_list = []
+        for cur_node in self.graph.values():
+            for _ in range(*cur_node.boundaries):
+                vertex_adj_list = []
+                for child_node in cur_node.children:
+                    vertex_adj_list.extend(list(range(*child_node.boundaries)))
+                global_adj_list.append(vertex_adj_list)
 
-            # Update children to nearest included layer
-            next_clean_nodes_names = []
-            cur_node.children = search_for_next_included_layer(
-                model, cur_node, "children", layer_graph, next_clean_nodes_names
-            )
+        self.ajd_list = global_adj_list
+        return self.adj_list
 
-    # Clean up the graph by removing layers not in INCLUSION_LIST (which are not connected anymore)
-    # Add some additional data like vertices boundaries and layer index
-    idx = 0
-    cur_lb = 0
-    cur_ub = 0
-    n_components = 0
-    for name in list(layer_graph.keys()):
-        node = layer_graph[name]
-        if not is_included(node.get_object(model)):
-            del layer_graph[name]
-        else:
-            cur_lb += n_components
-            node.idx = idx
-            module = node.get_object(model)
-            n_components = get_number_components(module)
-            cur_ub += n_components
-            node.boundaries = [cur_lb, cur_ub - 1]
-            idx += 1
-
-    return LayerGraph(model, layer_graph)
-
-
-def get_number_components(module):
-    for property in PROPERTY_NAMES:
-        if hasattr(module, property):
-            return getattr(module, property)
-
-    raise AttributeError(
-        f"Module {module} is not currently supported - file an issue on Github to provide your point of view on how to implement this."
-    )
-
-
-# def change_dim(tns: torch.Tensor, target_dim: int) -> torch.Tensor:
-#     """
-#     Expand or shrink dimension of tns so that it matches target dim.
-#
-#     To achieve this: squeeze or unsqueeze first dimension
-#     """
-#     cur_dim = tns.dim()
-#     cur_dim_smaller = cur_dim < target_dim
-#     while cur_dim != target_dim:
-#         if cur_dim_smaller:
-#             tns = tns.unsqueeze(0)
-#         else:
-#             tns = tns.squeeze(0)
-#         print(tns)
-#         print(target_dim, cur_dim)
-#         input()
-#         cur_dim = tns.dim()
-#     return tns
-#
-
-# def layer_to_vertices(module: nn.Module, node_feature_dim: int = 1) -> torch.Tensor:
-#     n_components = get_number_components(module)
-#     parameters = list(module.parameters())  # Parameters as list
-#     n_items = len(parameters)  # e.g. Linear + bias
-#     nodes = [None] * n_components
-#     for component in range(n_components):
-#         cur_node = [None] * n_items
-#         for item in range(n_items):
-#             params = parameters[item].data[component]
-#             # params = change_dim(
-#             #     params, node_feature_dim
-#             # )  # TODO remove or change, this doesn't always work...
-#             cur_node[item] = params
-#         nodes[component] = torch.cat(cur_node)
-#     return torch.cat(nodes, dim=0)
-
-
-def model_to_ajd_list(model: nn.Module) -> tg.data.Data:
-    layer_graph = model_to_layer_graph(model)
-    print(layer_graph.idx_graph)
-    # for idx in range(len(layer_graph)):
-    # node_obj = layer_graph.get_node_object(idx)
-    # x = layer_to_vertices(node_obj)
-    # print(x)
-    # for child_names in layer_node.children:
-    #     # TODO Create vertices
+    def __len__(self):
+        return len(self.graph)
