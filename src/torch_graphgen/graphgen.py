@@ -14,7 +14,8 @@ class LayerGraph:
         self.graph: dict = {}
         self.idx_graph: dict = {}
         self.initial_nodes: list[LayerNode] = []
-        self.adj_list = []
+        # self.adj_list = []
+        # self.edge_list = []
 
         model.eval()
 
@@ -120,21 +121,65 @@ class LayerGraph:
 
         self.graph = layer_graph
 
-    def gen_component_adj_list(self):
-        if self.adj_list:
-            print(
-                "Adjacency list was already generated. Call reset() to regenerate graph, then call this function again."
-            )
-            return
-        global_adj_list = []
+    def to_component_edge_list(self, output: str, parents=True, children=True):
+        assert parents or children
+
+        edge_list = []
+
+        for cur_node in self.graph.values():
+            for cur_vertex in range(*cur_node.boundaries):
+                next_nodes = []
+                if parents:
+                    next_nodes.extend(cur_node.parents)
+                if children:
+                    next_nodes.extend(cur_node.children)
+                for next_node in next_nodes:
+                    edges = map(lambda x: [cur_vertex, x], range(*next_node.boundaries))
+                    edge_list.extend(edges)
+
+            # Dump current edge_list
+            if len(edge_list) > 100_000:
+                with open(output, "a") as f:
+                    for edge in edge_list:
+                        string = " ".join(map(str, edge))
+                        f.write(string + "\n")
+
+                edge_list = []
+        # Final write
+        with open(output, "a") as f:
+            for edge in edge_list:
+                string = " ".join(map(str, edge))
+                f.write(string + "\n")
+
+    def to_component_adj_list(self, output: str, parents=True, children=True):
+        assert parents or children
+
+        adj_list = []
         for cur_node in self.graph.values():
             for _ in range(*cur_node.boundaries):
                 vertex_adj_list = []
-                for child_node in cur_node.children:
-                    vertex_adj_list.extend(list(range(*child_node.boundaries)))
-                global_adj_list.append(vertex_adj_list)
+                next_nodes = []
+                if parents:
+                    next_nodes.extend(cur_node.parents)
+                if children:
+                    next_nodes.extend(cur_node.children)
+                for next_node in next_nodes:
+                    vertex_adj_list.extend(list(range(*next_node.boundaries)))
+                adj_list.append(vertex_adj_list)
 
-        self.adj_list = global_adj_list
+            # Dump current adj_list
+            if len(adj_list) > 10_000:
+                with open(output, "a") as f:
+                    for edge in adj_list:
+                        string = " ".join(map(str, edge))
+                        f.write(string + "\n")
+
+                adj_list = []
+        # Final write
+        with open(output, "a") as f:
+            for edge in adj_list:
+                string = " ".join(map(str, edge))
+                f.write(string + "\n")
 
     def __len__(self) -> int:
         return len(self.graph)
