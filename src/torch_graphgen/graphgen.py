@@ -1,11 +1,13 @@
+import os
 from typing import Union
-from .utils.inclusion import search_for_next_included_layer, is_included
-from .utils.stats import get_n_components
-from .utils.graph import LayerNode
 
-import torch.nn as nn
 import torch
 from torch.fx.immutable_collections import immutable_list
+import torch.nn as nn
+
+from .utils.graph import LayerNode
+from .utils.inclusion import is_included, search_for_next_included_layer
+from .utils.stats import get_n_components
 
 
 class LayerGraph:
@@ -123,6 +125,7 @@ class LayerGraph:
 
     def to_component_edge_list(self, output: str, parents=True, children=True):
         assert parents or children
+        assert not os.path.isfile(output)
 
         edge_list = []
 
@@ -153,6 +156,7 @@ class LayerGraph:
 
     def to_component_adj_list(self, output: str, parents=True, children=True):
         assert parents or children
+        assert not os.path.isfile(output)
 
         adj_list = []
         for cur_node in self.graph.values():
