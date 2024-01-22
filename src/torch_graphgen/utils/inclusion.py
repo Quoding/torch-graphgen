@@ -1,5 +1,5 @@
 import torch.nn as nn
-
+from typing import List
 from .graph import LayerNode
 
 INCLUSION_LIST = [
@@ -46,7 +46,7 @@ def search_for_next_included_layer(
     attr: str,
     layer_graph: dict,
     next_clean_nodes: list,
-) -> list[str]:
+) -> List[str]:
     """
     Recursively search the next layer with a type in INCLUSION_LIST
 

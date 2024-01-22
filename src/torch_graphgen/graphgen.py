@@ -4,8 +4,9 @@ from typing import Union
 import torch
 from torch.fx.immutable_collections import immutable_list
 import torch.nn as nn
+import torch_geometric as pyg
 
-from .utils.graph import LayerNode
+from .utils.graph import LayerNode, recording_hook
 from .utils.inclusion import is_included, search_for_next_included_layer
 from .utils.stats import get_n_components
 
@@ -184,6 +185,21 @@ class LayerGraph:
             for edge in adj_list:
                 string = " ".join(map(str, edge))
                 f.write(string + "\n")
+
+    def write_activation_features(self, data: torch.Tensor, output: str):
+        record_buffer = []
+        hook = recording_hook(record_buffer)
+        for cur_node in self.graph.values():
+            module = self.get_node_module(cur_node.name)
+            module.register_forward_hook(hook)
+
+        self.model(data)
+        print(cur_node)
+        # print(record_buffer[-3])
+        print([record_buffer[i].shape for i in range(len(record_buffer))])
+        # TODO sortir les features par neurones
+        # print(len(record_buffer))
+        # print(self.__len__())
 
     def __len__(self) -> int:
         return len(self.graph)
