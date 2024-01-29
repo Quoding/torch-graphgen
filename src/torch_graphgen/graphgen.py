@@ -1,5 +1,5 @@
 import os
-from typing import Union
+from typing import Union, List
 
 import torch
 from torch.fx.immutable_collections import immutable_list
@@ -16,7 +16,7 @@ class LayerGraph:
         self.model: nn.Module = model
         self.graph: dict = {}
         self.idx_graph: dict = {}
-        self.initial_nodes: list[LayerNode] = []
+        self.initial_nodes: List[LayerNode] = []
         # self.adj_list = []
         # self.edge_list = []
 
@@ -126,8 +126,10 @@ class LayerGraph:
 
     def to_component_edge_list(self, output: str, parents=True, children=True):
         assert parents or children
-        assert not os.path.isfile(output)
-
+        # assert not os.path.isfile(output)
+        if os.path.isfile(output):
+            print("Output file already exists, skipping writing edge list")
+            return
         edge_list = []
 
         for cur_node in self.graph.values():
