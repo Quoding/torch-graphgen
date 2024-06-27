@@ -124,10 +124,10 @@ class LayerGraph:
 
         self.graph = layer_graph
 
-    def to_component_edge_list(self, output: str, parents=True, children=True):
+    def to_component_edge_list(self, output: str, parents=True, children=True, overwrite=False):
         assert parents or children
         # assert not os.path.isfile(output)
-        if os.path.isfile(output):
+        if os.path.isfile(output) and overwrite=False:
             print("Output file already exists, skipping writing edge list")
             return
         edge_list = []
