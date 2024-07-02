@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "torch-graphgen"
-version = "1.0.0"
+version = "1.0.1"
 description = "Generate graph representations of deep neural networks compatible with torch-geometric"
 authors = ["Quoding <quoding@protonmail.ch>"]
 license = "GPL-3.0-only"
