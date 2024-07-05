@@ -129,11 +129,12 @@ class LayerGraph:
         assert parents or children
         # assert not os.path.isfile(output)
         if os.path.isfile(output) and overwrite == False:
-            print("Output file already exists, skipping writing edge list")
-            return
-        else:
-            print(f"Deleted file {output}. Will proceed with overwrite.")
-            os.remove(output)
+            if overwrite == False:
+                print("Output file already exists, skipping writing edge list")
+                return
+            else:
+                print(f"Deleted file {output}. Will proceed with overwrite.")
+                os.remove(output)
         edge_list = []
 
         for cur_node in self.graph.values():
