@@ -1,9 +1,11 @@
 import os
-from typing import Union, List
+from typing import List, Union
 
 import torch
-from torch.fx.immutable_collections import immutable_list
+from torch.fx.immutable_collections import immutable_list, immutable_dict
 import torch.nn as nn
+import transformers
+from transformers.utils import fx as transfx
 
 from .utils.graph import LayerNode, recording_hook
 from .utils.inclusion import is_included, search_for_next_included_layer
@@ -62,9 +64,14 @@ class LayerGraph:
                 "Graph was already generated previously. Call reset() to reset object and regenerate the graph."
             )
             return
-        computational_graph = torch.fx.symbolic_trace(self.model)
+        if issubclass(type(self.model), transformers.PreTrainedModel):
+            computational_graph = transfx.symbolic_trace(self.model)
+        else:
+            computational_graph = torch.fx.symbolic_trace(self.model)
 
         layer_graph = {}
+
+        # Reminder: With regular networks (straight from torch), args[0] contains every parent layer
 
         # Create base nodes, no edges are created
         for idx, node in enumerate(computational_graph.graph.nodes):
@@ -80,11 +87,18 @@ class LayerGraph:
                     parent_node = layer_graph[parent.name]
                     parent_node.children.append(cur_node)
                     cur_node.parents.append(parent_node)
+            elif type(node.args[0]) == immutable_dict:
+                for parent in node.args[0].values():
+                    parent_node = layer_graph[parent.name]
+                    parent_node.children.append(cur_node)
+                    cur_node.parents.append(parent_node)
             else:
-                parent_name = node.args[0].name
-                parent_node = layer_graph[parent_name]
-                parent_node.children.append(cur_node)
-                cur_node.parents.append(parent_node)
+                for parent in node.args:
+                    if type(parent) == torch.fx.node.Node:
+                        parent_name = parent.name
+                        parent_node = layer_graph[parent_name]
+                        parent_node.children.append(cur_node)
+                        cur_node.parents.append(parent_node)
 
         # Connect is_included layers together, clean up unimportant layers
         for node in reversed(computational_graph.graph.nodes):
@@ -128,9 +142,11 @@ class LayerGraph:
     ):
         assert parents or children
         # assert not os.path.isfile(output)
-        if os.path.isfile(output) and overwrite == False:
+        if os.path.isfile(output):
             if overwrite == False:
-                print("Output file already exists, skipping writing edge list")
+                print(
+                    "Output file already exists, skipping writing edge list because overwrite = False"
+                )
                 return
             else:
                 print(f"Deleted file {output}. Will proceed with overwrite.")
@@ -192,21 +208,6 @@ class LayerGraph:
             for edge in adj_list:
                 string = " ".join(map(str, edge))
                 f.write(string + "\n")
-
-    # def write_activation_features(self, data: torch.Tensor, output: str):
-    #     record_buffer = []
-    #     hook = recording_hook(record_buffer)
-    #     for cur_node in self.graph.values():
-    #         module = self.get_node_module(cur_node.name)
-    #         module.register_forward_hook(hook)
-    #
-    #     self.model(data)
-    #     print(cur_node)
-    #     # print(record_buffer[-3])
-    #     print([record_buffer[i].shape for i in range(len(record_buffer))])
-    #     # TODO sortir les features par neurones
-    #     # print(len(record_buffer))
-    #     # print(self.__len__())
 
     def __len__(self) -> int:
         return len(self.graph)

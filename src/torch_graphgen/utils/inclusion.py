@@ -18,8 +18,8 @@ INCLUSION_LIST = [
     nn.LazyConvTranspose3d,
     nn.Bilinear,
     nn.LazyLinear,
-    nn.Embedding,
-    nn.EmbeddingBag,
+    # nn.Embedding,  #Transformers symbolic trace does not support this yet.
+    # nn.EmbeddingBag,
     nn.Transformer,
     nn.TransformerEncoder,
     nn.TransformerDecoder,
