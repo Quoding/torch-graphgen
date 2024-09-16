@@ -21,7 +21,7 @@ class LayerGraph:
         # self.adj_list = []
         # self.edge_list = []
 
-        model.eval()
+        self.model.eval()
 
         self.gen_layer_graph()
         self.find_initial_nodes()
@@ -122,6 +122,7 @@ class LayerGraph:
         cur_lb = 0
         cur_ub = 0
         n_components = 0
+        total_n_components = 0
         for name in list(layer_graph.keys()):
             node = layer_graph[name]
             if not is_included(node.get_module(self.model)):
@@ -131,11 +132,26 @@ class LayerGraph:
                 node.idx = idx
                 module = node.get_module(self.model)
                 n_components = get_n_components(module)
+                total_n_components += n_components
                 cur_ub += n_components
                 node.boundaries = [cur_lb, cur_ub]
                 idx += 1
 
+        # self.n_components = total_n_components
         self.graph = layer_graph
+        # return total_n_components
+
+    def get_n_components(self):
+        total_n_components = 0
+        for name in list(self.graph.keys()):
+            node = self.graph[name]
+            # if not is_included(node.get_module(self.model)):
+            #     del self.graph[name]
+            # else:
+            module = node.get_module(self.model)
+            n_components = get_n_components(module)
+            total_n_components += n_components
+        return total_n_components
 
     def to_component_edge_list(
         self, output: str, parents=True, children=True, overwrite=False
@@ -159,6 +175,8 @@ class LayerGraph:
                 if parents:
                     next_nodes.extend(cur_node.parents)
                 if children:
+                    # If we have parent nodes whose ONLY connections are deleted children (in the exclusion list), then the extend here does nothing and these nodes
+                    # do not appear in the edgelists
                     next_nodes.extend(cur_node.children)
                 for next_node in next_nodes:
                     edges = map(lambda x: [cur_vertex, x], range(*next_node.boundaries))
